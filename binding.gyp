@@ -1,7 +1,7 @@
 {
     "targets": [
         {
-            "target_name": "StartXmrig",
+            "target_name": "XMRig",
             "sources": [
                 "index.cc"
             ]

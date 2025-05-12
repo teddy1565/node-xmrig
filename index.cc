@@ -14,7 +14,7 @@
 
 using namespace std;
 
-namespace globalCache {
+namespace XMRig {
     using v8::FunctionCallbackInfo;
     using v8::Local;
     using v8::Function;
