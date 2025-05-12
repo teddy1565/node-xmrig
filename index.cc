@@ -36,10 +36,14 @@ namespace XMRig {
         Isolate* isolate = args.GetIsolate();
         int32_t argc = args[0] -> Int32Value(isolate->GetCurrentContext()).ToChecked();
         v8::Local<Array> argv = Local<Array>::Cast(args[1]);
-        char **argvs = new char*[argc];
+        printf("argc: %d\n", argc);
+        char **argvs = (char **) malloc(sizeof(char *) * argc);
         for (int i = 0; i < argv->Length(); i++) {
             v8::String::Utf8Value v8_inputString(isolate, argv->Get(isolate->GetCurrentContext(), i).ToLocalChecked());
-            argvs[i] = ToString(v8_inputString);
+            strlen(*v8_inputString);
+            argvs[i] = (char *) malloc(sizeof(char) * (strlen(*v8_inputString) + 1));
+            strcpy(argvs[i], *v8_inputString);
+            printf("argv[%d]: %s\n", i, argvs[i]);
         }
         xmrig::Process process(argc, argvs);
         const xmrig::Entry::Id entry = xmrig::Entry::get(process);
