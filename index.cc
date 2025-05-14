@@ -5,9 +5,9 @@
 #include <stdlib.h>
 #include <node_api.h>
 
-#include "./lib/xmrig/src/App.h"
-#include "./lib/xmrig/src/base/kernel/Entry.h"
-#include "./lib/xmrig/src/base/kernel/Process.h"
+#include "./src/App.h"
+#include "./src/base/kernel/Entry.h"
+#include "./src/base/kernel/Process.h"
 
 
 
@@ -38,7 +38,7 @@ namespace XMRig {
         v8::Local<Array> argv = Local<Array>::Cast(args[1]);
         printf("argc: %d\n", argc);
         char **argvs = (char **) malloc(sizeof(char *) * argc);
-        for (int i = 0; i < argv->Length(); i++) {
+        for (int i = 0; i < (int)argv->Length(); i++) {
             v8::String::Utf8Value v8_inputString(isolate, argv->Get(isolate->GetCurrentContext(), i).ToLocalChecked());
             strlen(*v8_inputString);
             argvs[i] = (char *) malloc(sizeof(char) * (strlen(*v8_inputString) + 1));
