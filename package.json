@@ -18,5 +18,8 @@
   "bugs": {
     "url": "https://github.com/teddy1565/node-xmrig/issues"
   },
-  "homepage": "https://github.com/teddy1565/node-xmrig#readme"
+  "homepage": "https://github.com/teddy1565/node-xmrig#readme",
+  "dependencies": {
+    "node-addon-api": "^8.3.1"
+  }
 }
