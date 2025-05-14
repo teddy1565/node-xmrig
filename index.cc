@@ -5,9 +5,9 @@
 #include <stdlib.h>
 #include <node_api.h>
 
-#include "./lib/xmrig/src/App.h"
-#include "./lib/xmrig/src/base/kernel/Entry.h"
-#include "./lib/xmrig/src/base/kernel/Process.h"
+#include "./src/App.h"
+#include "./src/base/kernel/Entry.h"
+#include "./src/base/kernel/Process.h"
 
 
 
