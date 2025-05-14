@@ -140,7 +140,8 @@
             ],
             "defines": [
                 "XMRIG_MINER_PROJECT",
-                "XMRIG_FEATURE_HWLOC"
+                "XMRIG_FEATURE_HWLOC",
+                "XMRIG_ALGO_RANDOMX"
             ],
             "conditions": [
                 ['OS=="win"', {
