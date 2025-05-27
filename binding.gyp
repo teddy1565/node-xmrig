@@ -808,31 +808,16 @@
                 "XMRIG_64_BIT",
                 "XMRIG_ARM"
             ],
-            "conditions": [
-                ['OS=="win"', {
-                "msvs_settings": {
-                "VCCLCompilerTool": {
-                    "AdditionalOptions": [
-                    # 可能需要設定 C++ 標準，例如 /std:c++17 或 /std:c++20
-                    # 如果專案需要，例如 /std:c++20 (如錯誤日誌所示)
-                    ],
-                    "ExceptionHandling": 1, # 0 代表 No Exception Handling, 1 代表 Yes with SEH Exceptions (/EHa), 2 代表 Yes (/EHsc)
-                    "WarningLevel": 3, # /W3
-                    "DisableSpecificWarnings": [
-                    4351, 4355, 4800, 4251, 4275, 4244, 4267, # 根據您的錯誤日誌
-                    ]
-                }
-                },
-                "link_settings": {
-                    "libraries": [
-                        "-lpowrprof.lib", # 確保連結所有必要的函式庫
-                        "-liphlpapi.lib",
-                        # "-lsrc/3rdparty/hwloc_x64-windows/lib/hwloc.lib" # <--- 新增此行，如果需要連結 hwloc 函式庫
-                    ]
-                }
-                }]
+            "dependencies": [
+                '<!(node -p "require(\'node-addon-api\').gyp")'
             ],
-
+            'cflags!': [ '-fno-exceptions' ],
+            'cflags_cc!': [ '-fno-exceptions' ],
+            "libraries": [
+                "-lpowrprof.lib", # 確保連結所有必要的函式庫
+                "-liphlpapi.lib",
+                # "-lsrc/3rdparty/hwloc_x64-windows/lib/hwloc.lib" # <--- 新增此行，如果需要連結 hwloc 函式庫
+            ]
         }
     ]
 }
