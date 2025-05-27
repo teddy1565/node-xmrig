@@ -2,7 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const source_file_dir_path = path.join(__dirname, "..", "./src");
+const module_root_dir = path.join(__dirname).replace(/(\/|\\)tools$/, "");
+const source_file_dir_path = path.join(module_root_dir, "./src");
 const source_file_dir_scan_result = fs.readdirSync(source_file_dir_path).map((x) => path.join(source_file_dir_path, x));
 
 /**
@@ -63,7 +64,7 @@ function scan_header_file(file_path) {
             const file_stat = fs.statSync(path.join(x));
             if (file_stat.isDirectory() === true) {
                 const source_file_dir = fs.readdirSync(x).map((m) => path.join(x, m));
-                return scan_source_file(source_file_dir);
+                return scan_header_file(source_file_dir);
             }
         } catch (error) {
             console.log(error);
@@ -75,8 +76,8 @@ function scan_header_file(file_path) {
 
 
 
-const scan_source_result = scan_source_file(source_file_dir_scan_result).flat(Infinity);
-const scan_header_result = scan_header_file(source_file_dir_scan_result).flat(Infinity);
+const scan_source_result = scan_source_file(source_file_dir_scan_result).flat(Infinity).map((x) => x.replace(module_root_dir, "<(module_root_dir)"));
+const scan_header_result = scan_header_file(source_file_dir_scan_result).flat(Infinity).map((x) => x.replace(module_root_dir, "<(module_root_dir)"));
 
 fs.appendFileSync("./source_file_output.txt", JSON.stringify(scan_source_result, null, 4));
 fs.appendFileSync("./header_file_output.txt", JSON.stringify(scan_header_result, null, 4));
