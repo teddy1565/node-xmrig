@@ -1,3 +1,7 @@
+// Import the native module
+const XMRigNative = require('./build/Release/XMRig.node');
+
+// Import the JavaScript wrapper
 const XMRig = require('./lib/xmrig');
 
 module.exports = {
