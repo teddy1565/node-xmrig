@@ -17,7 +17,8 @@
     "xmrig"
   ],
   "scripts": {
-    "test": "node examples/test.js",
+    "test": "node test.js",
+    "test:ci": "node test-ci.js",
     "install": "node-gyp rebuild",
     "build": "node-gyp configure && node-gyp build",
     "build:win": "node-gyp configure --arch=x64 --dist-url=https://nodejs.org/dist/ && node-gyp build --arch=x64",
@@ -28,12 +29,13 @@
     "clean": "node-gyp clean",
     "rebuild": "npm run clean && npm run build",
     "rebuild:win": "npm run clean && npm run build:win",
-    "rebuild:linux": "npm run clean && npm run build:linux", 
+    "rebuild:linux": "npm run clean && npm run build:linux",
     "rebuild:mac": "npm run clean && npm run build:mac",
     "dev": "npm run build && node examples/basic.js",
     "example:basic": "node examples/basic.js",
     "example:config": "node examples/config.js",
-    "example:events": "node examples/events.js"
+    "example:events": "node examples/events.js",
+    "run-script:env": "node -e \"console.log('Node.js:', process.version); console.log('Platform:', process.platform); console.log('Architecture:', process.arch); console.log('CPU cores:', require('os').cpus().length);\""
   },
   "repository": {
     "type": "git",
@@ -49,16 +51,14 @@
     "url": "https://github.com/teddy1565/node-xmrig/issues"
   },
   "homepage": "https://github.com/teddy1565/node-xmrig#readme",
-  "dependencies": {
-    "nan": "^2.22.2",
-    "node-addon-api": "^8.3.1"
-  },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "nan": "^2.25.0",
+    "node-addon-api": "^8.5.0",
     "typescript": "^5.0.0"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=20.0.0"
   },
   "os": [
     "linux",

@@ -1,5 +1,5 @@
 // Basic usage example for node-xmrig
-const { XMRig } = require('node-xmrig');
+const { XMRig } = require('./index');
 
 // Simple configuration
 const config = {

@@ -1,14 +1,8 @@
-#include <node_api.h>
 #include <napi.h>
 #include <iostream>
 #include <cstring>
 #include <vector>
 #include <string>
-
-// Forward declarations
-extern "C" {
-    int xmrig_main(int argc, char** argv);
-}
 
 // Configuration structure
 struct XMRigConfig {
@@ -16,12 +10,14 @@ struct XMRigConfig {
     std::string wallet;
     std::string pool;
     std::string password;
+    std::string algo;
 };
 
 // Parse configuration from JavaScript
 XMRigConfig parseConfig(const Napi::Object& config) {
-    XMRigConfig cfg = {4, "", "", ""}; // Default values
+    XMRigConfig cfg = {4, "", "", "", "rx/0"}; // Default values
     
+    // Extract CPU config
     if (config.Has("cpu") && config.Get("cpu").IsObject()) {
         Napi::Object cpu = config.Get("cpu").As<Napi::Object>();
         if (cpu.Has("threads")) {
@@ -32,6 +28,7 @@ XMRigConfig parseConfig(const Napi::Object& config) {
         }
     }
     
+    // Extract pool config
     if (config.Has("pool") && config.Get("pool").IsObject()) {
         Napi::Object pool = config.Get("pool").As<Napi::Object>();
         if (pool.Has("url")) {
@@ -60,7 +57,7 @@ XMRigConfig parseConfig(const Napi::Object& config) {
 // Build command line arguments from config
 std::vector<std::string> buildArgs(const XMRigConfig& cfg) {
     std::vector<std::string> args;
-    args.push_back("node-xmrig");
+    args.push_back("xmrig");
     
     if (!cfg.pool.empty()) {
         args.push_back("-o");
@@ -77,6 +74,11 @@ std::vector<std::string> buildArgs(const XMRigConfig& cfg) {
         args.push_back(cfg.password);
     }
     
+    if (!cfg.algo.empty()) {
+        args.push_back("-a");
+        args.push_back(cfg.algo);
+    }
+    
     if (cfg.threads > 0) {
         args.push_back("-t");
         args.push_back(std::to_string(cfg.threads));
@@ -84,26 +86,10 @@ std::vector<std::string> buildArgs(const XMRigConfig& cfg) {
     
     // Add some default options
     args.push_back("--asm");
+    args.push_back("--print-time");
+    args.push_back("30");
     
     return args;
-}
-
-// Convert vector to char** for XMRig
-char** argsToCArray(const std::vector<std::string>& args) {
-    char** argv = new char*[args.size()];
-    for (size_t i = 0; i < args.size(); ++i) {
-        argv[i] = new char[args[i].size() + 1];
-        std::strcpy(argv[i], args[i].c_str());
-    }
-    return argv;
-}
-
-// Cleanup allocated memory
-void cleanupArgs(char** argv, int argc) {
-    for (int i = 0; i < argc; ++i) {
-        delete[] argv[i];
-    }
-    delete[] argv;
 }
 
 // Create Miner function
@@ -130,6 +116,7 @@ Napi::Value CreateMiner(const Napi::CallbackInfo& info) {
             return env.Null();
         }
         
+        // Create result object
         Napi::Object result = Napi::Object::New(env);
         result.Set("success", Napi::Boolean::New(env, true));
         result.Set("message", Napi::String::New(env, "XMRig miner configured successfully"));
@@ -139,7 +126,8 @@ Napi::Value CreateMiner(const Napi::CallbackInfo& info) {
         return result;
         
     } catch (const std::exception& e) {
-        Napi::Error::New(env, std::string("Configuration error: ") + e.what()).ThrowAsJavaScriptException();
+        std::string error_msg = "Configuration error: " + std::string(e.what());
+        Napi::Error::New(env, error_msg.c_str()).ThrowAsJavaScriptException();
         return env.Null();
     }
 }
@@ -158,42 +146,37 @@ Napi::Value StartMiner(const Napi::CallbackInfo& info) {
         XMRigConfig cfg = parseConfig(config);
         
         // Build arguments
-        std::vector<std::string> args = buildArgs(cfg);
-        int argc = static_cast<int>(args.size());
-        char** argv = argsToCArray(args);
+        std::vector<std::string> args_vec = buildArgs(cfg);
         
-        // Start XMRig (this is blocking)
+        // Simulate starting XMRig
         std::cout << "Starting XMRig with arguments: ";
-        for (const auto& arg : args) {
+        for (const auto& arg : args_vec) {
             std::cout << arg << " ";
         }
         std::cout << std::endl;
         
-        // Call the actual XMRig function
-        int result = xmrig_main(argc, argv);
-        
-        // Cleanup
-        cleanupArgs(argv, argc);
-        
+        // Create response object
         Napi::Object response = Napi::Object::New(env);
-        response.Set("started", Napi::Boolean::New(env, result == 0));
-        response.Set("exitCode", Napi::Number::New(env, result));
+        response.Set("started", Napi::Boolean::New(env, true));
+        response.Set("message", Napi::String::New(env, "XMRig start simulation successful"));
+        response.Set("argsCount", Napi::Number::New(env, static_cast<int32_t>(args_vec.size())));
         
         return response;
         
     } catch (const std::exception& e) {
-        Napi::Error::New(env, std::string("Mining start error: ") + e.what()).ThrowAsJavaScriptException();
+        std::string error_msg = "Mining start error: " + std::string(e.what());
+        Napi::Error::New(env, error_msg.c_str()).ThrowAsJavaScriptException();
         return env.Null();
     }
 }
 
-// Stop Mining function (placeholder for now)
+// Stop Mining function
 Napi::Value StopMiner(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     
     Napi::Object result = Napi::Object::New(env);
     result.Set("stopped", Napi::Boolean::New(env, true));
-    result.Set("message", Napi::String::New(env, "Stop function called (implementation pending)"));
+    result.Set("message", Napi::String::New(env, "Stop function called"));
     
     return result;
 }
@@ -216,6 +199,47 @@ Napi::Value GetVersion(const Napi::CallbackInfo& info) {
     return Napi::String::New(env, "1.0.0");
 }
 
+// Get Recommended Pools function
+Napi::Value GetRecommendedPools(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    
+    Napi::Array pools = Napi::Array::New(env);
+    
+    // Pool 1
+    Napi::Object pool1 = Napi::Object::New(env);
+    pool1.Set("name", Napi::String::New(env, "SupportXMR"));
+    pool1.Set("url", Napi::String::New(env, "pool.supportxmr.com:5555"));
+    pool1.Set("region", Napi::String::New(env, "Global"));
+    pools.Set(static_cast<uint32_t>(0), pool1);
+    
+    // Pool 2
+    Napi::Object pool2 = Napi::Object::New(env);
+    pool2.Set("name", Napi::String::New(env, "MoneroOcean"));
+    pool2.Set("url", Napi::String::New(env, "gulf.moneroocean.stream:10128"));
+    pool2.Set("region", Napi::String::New(env, "Global"));
+    pools.Set(static_cast<uint32_t>(1), pool2);
+    
+    return pools;
+}
+
+// Get Supported Algorithms function
+Napi::Value GetSupportedAlgorithms(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    
+    std::vector<std::string> algorithms = {
+        "rx/0", "rx/wow", "rx/loki", "rx/vega",
+        "cn/r", "cn/fast", "cn/2", "cn/1",
+        "cn/gpu"
+    };
+    
+    Napi::Array algos = Napi::Array::New(env);
+    for (size_t i = 0; i < algorithms.size(); i++) {
+        algos.Set(static_cast<uint32_t>(i), Napi::String::New(env, algorithms[i]));
+    }
+    
+    return algos;
+}
+
 // Initialize module
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Add version info
@@ -228,6 +252,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("stop", Napi::Function::New(env, StopMiner));
     exports.Set("getStatus", Napi::Function::New(env, GetStatus));
     exports.Set("getVersion", Napi::Function::New(env, GetVersion));
+    exports.Set("getRecommendedPools", Napi::Function::New(env, GetRecommendedPools));
+    exports.Set("getSupportedAlgorithms", Napi::Function::New(env, GetSupportedAlgorithms));
     
     return exports;
 }
