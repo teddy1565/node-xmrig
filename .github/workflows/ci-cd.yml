@@ -2,15 +2,14 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ feat/rebuild ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  # 基礎測試和編譯驗證
-  test-and-build:
-    name: Test on ${{ matrix.os }} - Node.js ${{ matrix.node-version }}
+  test-core:
+    name: Test - ${{ matrix.os }} / Node.js ${{ matrix.node-version }}
     runs-on: ${{ matrix.os }}
     
     strategy:
@@ -32,7 +31,7 @@ jobs:
       NODE_VERSION: ${{ matrix.node-version }}
 
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
     - name: Setup Node.js ${{ matrix.node-version }}
@@ -163,7 +162,8 @@ jobs:
             node-version: '20.x'
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
     - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
@@ -391,10 +391,9 @@ jobs:
     name: Release Preparation
     needs: [test-and-build, native-build-test, security-check, compatibility-test]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
