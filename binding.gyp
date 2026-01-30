@@ -6,9 +6,11 @@
                 "index_node_api.cc"
             ],
             "include_dirs": [
-                "<!@(node -p \"require.resolve('node-addon-api').replace('index.js', '')\")"
+                "node_modules/node-addon-api"
             ],
             "defines": [
+                "XMRIG_MINER_PROJECT",
+                "XMRIG_ALGO_RANDOMX",
                 "NAPI_VERSION=8"
             ],
             "conditions": [
