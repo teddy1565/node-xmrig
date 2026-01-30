@@ -6,28 +6,26 @@
                 "index_node_api.cc"
             ],
             "include_dirs": [
-                "node_modules/node-addon-api"
+                "<!@(node -p \"require.resolve('node-addon-api').replace('index.js', '')\")"
             ],
             "defines": [
-                "XMRIG_MINER_PROJECT",
-                "XMRIG_ALGO_RANDOMX",
                 "NAPI_VERSION=8"
             ],
             "conditions": [
                 # macOS configuration
                 ['OS=="mac"', {
-                    "cflags": [ "-fPIC", "-O3", "-std=c++14" ],
+                    "cflags": [ "-fPIC", "-O2", "-std=c++14" ],
                     "xcode_settings": {
                         "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
                         "CLANG_CXX_LIBRARY": "libc++",
-                        "MACOSX_DEPLOYMENT_TARGET": "10.12"
+                        "MACOSX_DEPLOYMENT_TARGET": "10.15"
                     },
-                    "libraries": [ "-lpthread", "-ldl" ]
+                    "libraries": []
                 }],
                 # Linux configuration  
                 ['OS=="linux"', {
-                    "cflags": [ "-fPIC", "-O3", "-std=c++14" ],
-                    "ldflags": [ "-lpthread", "-ldl", "-lrt" ]
+                    "cflags": [ "-fPIC", "-O2", "-std=c++14" ],
+                    "ldflags": [ "-pthread", "-ldl" ]
                 }],
                 # Windows configuration
                 ['OS=="win"', {

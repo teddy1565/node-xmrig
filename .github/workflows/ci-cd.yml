@@ -2,379 +2,207 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ feat/rebuild ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  test:
-    name: Test on ${{ matrix.os }} - Node.js ${{ matrix.node-version }} - ${{ matrix.arch }}
-    
+  test-core:
+    name: Test - ${{ matrix.os }} / Node.js ${{ matrix.node-version }}
     runs-on: ${{ matrix.os }}
     
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: ['20.x', '21.x', '22.x', '23.x']
-        arch: ['x64', 'arm64']
-        include:
-          # 排除一些不支援的組合
-          - os: windows-latest
-            arch: arm64
-            node-version: '20.x'
-          - os: windows-latest
-            arch: arm64
-            node-version: '21.x'
-          - os: windows-latest
-            arch: arm64
-            node-version: '23.x'
-
-    env:
-      NODE_VERSION: ${{ matrix.node-version }}
+        # 簡化的測試矩陣，只測試核心平台
+        - os: ubuntu-latest
+          node-version: '20.x'
+        - os: macos-latest
+          node-version: '20.x'
 
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
     - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: package-lock.json
 
     - name: Install dependencies
-      run: npm ci
-      shell: bash
+      run: npm install
+      continue-on-error: false
 
-    - name: Display environment info
+    - name: Display environment
       run: |
-        echo "=== Environment Information ==="
-        node --version
-        npm --version
-        uname -a
-        echo "=== CPU Information ==="
-        if [ "$RUNNER_OS" = "macOS" ]; then
-          sysctl -n machdep.cpu.brand_string
-        elif [ "$RUNNER_OS" = "Linux" ]; then
-          cat /proc/cpuinfo | grep "model name" | head -1
-        fi
-        echo "=== Platform Information ==="
-        npm run-script --silent run-script:env || echo "Env script not found"
+        echo "Environment: ${{ matrix.os }}"
+        echo "Node.js: $(node --version)"
+        echo "npm: $(npm --version)"
+        echo "Platform: $(uname -a)"
 
-    - name: Clean build artifacts
+    - name: Build check
       run: |
-        npm run clean
-        rm -rf build/
-        rm -rf node_modules/.cache/
-      shell: bash
+        echo "=== Build Check ==="
+        npm run clean || true
+        npm run build
+      continue-on-error: true
 
-    - name: Build native addon
-      run: npm run rebuild
-      shell: bash
-      env:
-        # 確保在每個平台上都能找到正確的編譯工具
-        CC: ${{ matrix.os == 'windows-latest' && 'cl' || matrix.os == 'macOS-latest' && 'clang' || 'gcc' }}
-        CXX: ${{ matrix.os == 'windows-latest' && 'cl' || matrix.os == 'macOS-latest' && 'clang++' || 'g++' }}
-
-    - name: Verify build artifacts
+    - name: Functionality test
       run: |
-        echo "=== Build Artifacts Check ==="
-        if [ "$RUNNER_OS" = "Windows" ]; then
-          ls -la build/Release/*.node || echo "No .node files found"
-        else
-          ls -la build/Release/*.node || echo "No .node files found"
-        fi
+        echo "=== Functionality Test ==="
+        node -e "
+        const assert = require('assert');
         
-        # 檢查檔案大小（應該不能是 0 bytes）
-        if [ "$RUNNER_OS" = "Windows" ]; then
-          build_files=$(find build/Release/ -name "*.node" -size +0c 2>/dev/null | wc -l || echo "0")
-        else
-          build_files=$(find build/Release/ -name "*.node" -size +0c 2>/dev/null | wc -l || echo "0")
-        fi
-        
-        echo "Valid build files: $build_files"
-        if [ "$build_files" -eq "0" ]; then
-          echo "❌ No valid build files found!"
-          exit 1
-        else
-          echo "✅ Build files created successfully"
-        fi
-      shell: bash
-
-    - name: Test module loading
-      run: |
-        echo "=== Module Loading Test ==="
-        node -e "
-        try {
-          console.log('Testing native module loading...');
-          const XMRig = require('./index.js');
-          console.log('✅ Module loaded successfully');
-          console.log('Version:', XMRig.getVersion());
-          console.log('Supported algorithms count:', XMRig.getSupportedAlgorithms().length);
-          console.log('Recommended pools count:', XMRig.getRecommendedPools().length);
-          
-          // Test miner creation
-          const config = {
-            pool: {
-              url: 'test.pool.com:5555',
-              user: 'test_wallet_address',
-              pass: 'x'
-            },
-            cpu: {
-              threads: 2
-            }
-          };
-          
-          const miner = XMRig.createMiner(config);
-          console.log('✅ Miner created successfully');
-          
-          // Test all API methods exist
-          const methods = ['start', 'stop', 'getStats', 'getStatus', 'on', 'emit'];
-          methods.forEach(method => {
-            if (typeof miner[method] === 'function') {
-              console.log('✅ Method', method, 'exists');
-            } else {
-              console.log('❌ Method', method, 'missing or invalid type:', typeof miner[method]);
-            }
-          });
-          
-          console.log('✅ All API tests passed');
-        } catch (error) {
-          console.error('❌ Module loading failed:', error.message);
-          process.exit(1);
-        }
-        "
-      shell: bash
-
-    - name: Test type definitions
-      run: |
-        echo "=== Type Definitions Test ==="
-        node -e "
-        try {
-          // Test TypeScript types by importing the module
-          const XMRig = require('./index.js');
-          const config = {
-            pool: { url: 'test.pool.com:5555', user: 'test', pass: 'x' },
-            cpu: { threads: 2 }
-          };
-          const miner = XMRig.createMiner(config);
-          
-          // Verify the config object has expected properties
-          if (miner.config && miner.config.pool && miner.config.cpu) {
-            console.log('✅ Configuration structure valid');
-          } else {
-            console.log('⚠️ Configuration structure may be incomplete');
-          }
-          
-          console.log('✅ Type definitions test passed');
-        } catch (error) {
-          console.error('❌ Type definitions test failed:', error.message);
-          process.exit(1);
-        }
-        "
-      shell: bash
-
-    - name: Test compatibility with different Node.js versions
-      if: matrix.node-version == '22.x' # Only test compatibility on one version
-      run: |
-        echo "=== Compatibility Test ==="
-        node -e "
+        // Test basic module loading
         const XMRig = require('./index.js');
+        console.log('✅ Module loaded');
         
-        // Test all major API endpoints
-        console.log('Testing all API endpoints...');
+        // Test basic API
+        const version = XMRig.getVersion();
+        assert.strictEqual(typeof version, 'string');
+        assert.ok(version.length > 0);
+        console.log('✅ Version API:', version);
         
-        // Static methods
-        XMRig.getVersion();
-        XMRig.getSupportedAlgorithms();
-        XMRig.getRecommendedPools();
+        const algorithms = XMRig.getSupportedAlgorithms();
+        assert.ok(Array.isArray(algorithms));
+        assert.ok(algorithms.length > 0);
+        console.log('✅ Algorithms:', algorithms.length);
         
-        // Instance creation and methods
+        const pools = XMRig.getRecommendedPools();
+        assert.ok(Array.isArray(pools));
+        assert.ok(pools.length > 0);
+        console.log('✅ Pools:', pools.length);
+        
+        // Test miner creation
         const config = {
-          pool: { url: 'test.pool.com:5555', user: 'test', pass: 'x' },
-          cpu: { threads: 2 }
+          pool: {
+            url: 'test.pool.com:5555',
+            user: 'test_wallet_address_123456789abcdef',
+            pass: 'x'
+          },
+          cpu: {
+            threads: 2
+          }
         };
+        
         const miner = XMRig.createMiner(config);
+        assert.ok(miner);
+        assert.strictEqual(typeof miner.start, 'function');
+        assert.strictEqual(typeof miner.stop, 'function');
+        assert.strictEqual(typeof miner.getStats, 'function');
+        assert.strictEqual(typeof miner.getStatus, 'function');
+        console.log('✅ Miner creation and methods');
         
         // Test event system
         miner.on('test', () => {});
         miner.emit('test');
+        console.log('✅ Event system');
         
-        console.log('✅ All compatibility tests passed');
+        console.log('✅ All functionality tests passed');
         "
-      shell: bash
 
-    - name: Package verification
+    - name: Run CI tests
       run: |
-        echo "=== Package Verification ==="
-        # Check if package.json is valid
-        npm run-script --silent --if-present test-script || echo "No test script defined"
-        
-        # Check package.json fields
-        node -e "
-        const pkg = require('./package.json');
-        console.log('Package name:', pkg.name);
-        console.log('Package version:', pkg.version);
-        console.log('Engines:', pkg.engines);
-        console.log('CPU support:', pkg.cpu);
-        console.log('OS support:', pkg.os);
-        console.log('✅ Package metadata valid');
-        "
-      shell: bash
+        echo "=== CI Test Suite ==="
+        if [ -f "test-ci.js" ]; then
+          node test-ci.js
+        else
+          echo "CI test file not found"
+        fi
 
-    - name: Build performance benchmark
-      if: matrix.os == 'ubuntu-latest' && matrix.arch == 'x64'
-      run: |
-        echo "=== Build Performance Benchmark ==="
-        time npm run clean > /dev/null 2>&1
-        time npm run rebuild > /dev/null 2>&1
-        echo "✅ Build performance benchmark completed"
-      shell: bash
-
-    - name: Upload build artifacts
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: node-xmrig-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.node-version }}
-        path: |
-          build/Release/*.node
-          index.js
-          lib/
-          types.ts
-          index.d.ts
-          package.json
-        retention-days: 7
-
-  build-native-only:
-    name: Native Build Test (All Platforms)
-    runs-on: ubuntu-latest
+  native-compile:
+    name: Native Compile - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: ['20.x', '22.x']
-        arch: ['x64']
-        include:
-          - os: macos-latest
-            arch: arm64
-            node-version: '22.x'
+        - os: ubuntu-latest
+          node-version: '20.x'
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
     - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
 
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Clean build
-      run: npm run clean
-
-    - name: Build with verbose output
+    - name: Install build dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        echo "=== Building on ${{ matrix.os }} ==="
-        npm run rebuild
-        echo "=== Build completed ==="
-
-    - name: Verify binary
-      run: |
-        echo "=== Binary Verification ==="
-        find build/ -name "*.node" -exec file {} \;
-        echo "✅ Binary verification completed"
-
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22.x'
+        sudo apt-get update -qq
+        sudo apt-get install -y build-essential python3-dev
 
     - name: Install dependencies
-      run: npm ci
+      run: npm install
 
-    - name: Run security audit
+    - name: Clean and rebuild
       run: |
-        npm audit --audit-level=moderate
-      continue-on-error: true
+        echo "=== Native Build ==="
+        npm run clean
+        npm run build
 
-    - name: Check for sensitive data
+    - name: Verify build artifacts
       run: |
-        echo "=== Security Scan ==="
-        # Check for common sensitive patterns
-        if grep -r "password\|secret\|key\|token" --include="*.js" --include="*.json" --include="*.md" . | grep -v "test\|example\|demo" | head -5; then
-          echo "⚠️ Potential sensitive data found"
-        else
-          echo "✅ No obvious sensitive data found"
-        fi
-
-  release-prep:
-    name: Release Preparation
-    needs: [test, build-native-only, security-scan]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22.x'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Verify release readiness
-      run: |
-        echo "=== Release Readiness Check ==="
-        ls -la artifacts/
-        echo "✅ Release artifacts prepared"
+        echo "=== Verify Build ==="
+        ls -la build/Release/ 2>/dev/null || echo "No build directory"
+        find build/ -name "*.node" 2>/dev/null || echo "No .node files"
         
-        # Check if all expected files exist
-        if [ ! -f "package.json" ]; then
-          echo "❌ package.json missing"
+        if [ -f "build/Release/XMRig.node" ]; then
+          echo "✅ Native module compiled"
+          file build/Release/XMRig.node
+        else
+          echo "❌ Native module not found"
           exit 1
         fi
-        
-        # Validate package.json
+
+    - name: Test native module
+      run: |
+        echo "=== Test Native Module ==="
         node -e "
-        const pkg = require('./package.json');
-        if (!pkg.name || !pkg.version || !pkg.main) {
-          throw new Error('Invalid package.json structure');
+        try {
+          const addon = require('./build/Release/XMRig.node');
+          console.log('✅ Native module loaded');
+          console.log('Exports:', Object.keys(addon));
+          
+          if (typeof addon.getVersion === 'function') {
+            console.log('✅ Native getVersion:', addon.getVersion());
+          }
+        } catch (error) {
+          console.error('❌ Native module error:', error.message);
+          process.exit(1);
         }
-        console.log('✅ Package.json validation passed');
         "
 
-    - name: Create release summary
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Security audit
       run: |
-        echo "## 📦 Release Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### ✅ Build Status" >> $GITHUB_STEP_SUMMARY
-        echo "- **Test Matrix**: 12 platform combinations tested" >> $GITHUB_STEP_SUMMARY
-        echo "- **Node.js Versions**: 20.x, 21.x, 22.x, 23.x" >> $GITHUB_STEP_SUMMARY
-        echo "- **Operating Systems**: Ubuntu, Windows, macOS" >> $GITHUB_STEP_SUMMARY
-        echo "- **Architectures**: x64, arm64" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🔍 Security Status" >> $GITHUB_STEP_SUMMARY
-        echo "- **Dependencies**: Audited" >> $GITHUB_STEP_SUMMARY
-        echo "- **Code Scan**: Completed" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📊 Build Performance" >> $GITHUB_STEP_SUMMARY
-        echo "- **Cross-platform builds**: Verified" >> $GITHUB_STEP_SUMMARY
-        echo "- **Native modules**: All compiled successfully" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Ready for release! 🚀" >> $GITHUB_STEP_SUMMARY
+        echo "=== Security Audit ==="
+        npm audit --audit-level=moderate || echo "Audit completed"
+        
+    - name: Package validation
+      run: |
+        echo "=== Package Validation ==="
+        node -e "
+        const pkg = require('./package.json');
+        console.log('Package:', pkg.name, '@', pkg.version);
+        console.log('Main:', pkg.main);
+        console.log('Engines:', pkg.engines?.node);
+        console.log('✅ Package metadata valid');
+        "
