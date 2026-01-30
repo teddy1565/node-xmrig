@@ -450,23 +450,23 @@ jobs:
             # Copy documentation
             cp package.json README.md "$pkg_dir/" 2>/dev/null || true
             
-            # Create installation script
-            cat > "$pkg_dir/install.js" << 'EOF'
-const fs = require('fs');
-const path = require('path');
-
-console.log('Installing node-xmrig...');
-const sourcePath = path.join(__dirname, 'XMRig.node');
-const destPath = path.join(process.cwd(), 'node_modules', 'node-xmrig', 'build', 'Release', 'XMRig.node');
-
-try {
-  fs.copyFileSync(sourcePath, destPath);
-  console.log('✅ Binary installed successfully');
-} catch (error) {
-  console.error('❌ Installation failed:', error.message);
-  process.exit(1);
-}
-EOF
+            # Create installation script using echo instead of heredoc
+            {
+              echo "const fs = require('fs');"
+              echo "const path = require('path');"
+              echo ""
+              echo "console.log('Installing node-xmrig...');"
+              echo "const sourcePath = path.join(__dirname, 'XMRig.node');"
+              echo "const destPath = path.join(process.cwd(), 'node_modules', 'node-xmrig', 'build', 'Release', 'XMRig.node');"
+              echo ""
+              echo "try {"
+              echo "  fs.copyFileSync(sourcePath, destPath);"
+              echo "  console.log('✅ Binary installed successfully');"
+              echo "} catch (error) {"
+              echo "  console.error('❌ Installation failed:', error.message);"
+              echo "  process.exit(1);"
+              echo "}"
+            } > "$pkg_dir/install.js"
             
             echo "📦 Package created: $pkg_dir"
           fi
@@ -477,46 +477,46 @@ EOF
         cp artifacts/*/*/XMRig.node release/complete/ 2>/dev/null || true
         cp package.json README.md release/complete/ 2>/dev/null || true
         
-        # Create platform overview
-        cat > release/README.md << 'EOF'
-# node-xmrig Release Packages
-
-This directory contains platform-specific binaries for node-xmrig.
-
-## Installation
-
-1. Choose the package for your platform/architecture
-2. Extract the files
-3. Run: `node install.js`
-
-## Available Platforms
-
-- Windows x64
-- macOS x64 (Intel)
-- macOS arm64 (Apple Silicon)
-- Linux x64
-- Linux arm64
-
-## Usage
-
-```javascript
-const { XMRig } = require('node-xmrig');
-
-const miner = new XMRig({
-  pool: {
-    url: 'your-pool-url',
-    user: 'your-wallet-address'
-  },
-  cpu: {
-    threads: 4
-  }
-});
-
-await miner.start();
-```
-
-For full documentation, see README.md
-EOF
+        # Create platform overview using echo
+        {
+          echo "# node-xmrig Release Packages"
+          echo ""
+          echo "This directory contains platform-specific binaries for node-xmrig."
+          echo ""
+          echo "## Installation"
+          echo ""
+          echo "1. Choose the package for your platform/architecture"
+          echo "2. Extract the files"
+          echo "3. Run: \`node install.js\`"
+          echo ""
+          echo "## Available Platforms"
+          echo ""
+          echo "- Windows x64"
+          echo "- macOS x64 (Intel)"
+          echo "- macOS arm64 (Apple Silicon)"
+          echo "- Linux x64"
+          echo "- Linux arm64"
+          echo ""
+          echo "## Usage"
+          echo ""
+          echo "\`\`\`javascript"
+          echo "const { XMRig } = require('node-xmrig');"
+          echo ""
+          echo "const miner = new XMRig({"
+          echo "  pool: {"
+          echo "    url: 'your-pool-url',"
+          echo "    user: 'your-wallet-address'"
+          echo "  },"
+          echo "  cpu: {"
+          echo "    threads: 4"
+          echo "  }"
+          echo "});"
+          echo ""
+          echo "await miner.start();"
+          echo "\`\`\`"
+          echo ""
+          echo "For full documentation, see README.md"
+        } > release/README.md
         
         ls -la release/
     
