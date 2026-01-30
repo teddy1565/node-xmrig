@@ -6,11 +6,9 @@
                 "index_node_api.cc"
             ],
             "include_dirs": [
-                "node_modules/node-addon-api"
+                "<!(node -p \"require.resolve('node-addon-api').replace('index.js', '')\")"
             ],
             "defines": [
-                "XMRIG_MINER_PROJECT",
-                "XMRIG_ALGO_RANDOMX",
                 "NAPI_VERSION=8"
             ],
             "conditions": [
@@ -20,7 +18,8 @@
                     "xcode_settings": {
                         "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
                         "CLANG_CXX_LIBRARY": "libc++",
-                        "MACOSX_DEPLOYMENT_TARGET": "10.15"
+                        "MACOSX_DEPLOYMENT_TARGET": "10.15",
+                        "CLANG_CXX_LANGUAGE_STANDARD": "c++14"
                     },
                     "libraries": []
                 }],
