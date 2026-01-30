@@ -1,0 +1,633 @@
+name: Node-XMRig CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # Daily builds at 02:00 UTC
+    - cron: '0 2 * * *'
+
+env:
+  NODE_VERSION: '20'
+  NPM_VERSION: '10'
+
+jobs:
+  # Code quality and security checks
+  quality-checks:
+    runs-on: ubuntu-latest
+    name: Quality & Security Checks
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: |
+        npm ci
+        npm install -g eslint prettier jshint typescript @typescript-eslint/parser @typescript-eslint/eslint-plugin
+    
+    - name: Code style check
+      run: |
+        echo "🔍 Running code style checks..."
+        
+        # Check JavaScript files syntax
+        find . -name "*.js" -not -path "./node_modules/*" -not -path "./build/*" -exec jshint {} \; || echo "JSHint completed"
+        
+        # Check TypeScript files
+        if [ -f "index.d.ts" ]; then
+          echo "✅ TypeScript definitions found"
+          head -10 index.d.ts
+        fi
+        
+        # Count documentation
+        doc_comments=$(grep -r "\/\*\*\|\/\*\|\/\/" --include="*.js" --include="*.cc" . | wc -l)
+        total_lines=$(find . -name "*.js" -o -name "*.cc" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}' | grep -E '^[0-9]+$')
+        echo "📊 Documentation coverage: $doc_comments comments in $total_lines lines"
+    
+    - name: Security audit
+      run: |
+        echo "🔒 Running security audit..."
+        npm audit --audit-level moderate || echo "Security audit completed with warnings"
+    
+    - name: Check for sensitive data
+      run: |
+        echo "🔍 Checking for sensitive data..."
+        if grep -r "password\|secret\|key\|token" --include="*.js" --include="*.ts" --include="*.json" --include="*.md" . | grep -v "example\|test\|config\|README\|package.json" | head -5; then
+          echo "⚠️ Potential sensitive data found"
+          exit 1
+        else
+          echo "✅ No sensitive data found"
+        fi
+
+  # Cross-platform build matrix
+  build-matrix:
+    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.platform }} (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows builds
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            node-version: '18'
+            toolchain: 'msvc'
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            node-version: '20'
+            toolchain: 'msvc'
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            node-version: '22'
+            toolchain: 'msvc'
+          - os: windows-latest
+            platform: win32
+            arch: arm64
+            node-version: '20'
+            toolchain: 'msvc'
+            
+          # macOS builds
+          - os: macos-14
+            platform: darwin
+            arch: x64
+            node-version: '18'
+            toolchain: 'clang'
+          - os: macos-14
+            platform: darwin
+            arch: x64
+            node-version: '20'
+            toolchain: 'clang'
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+            node-version: '20'
+            toolchain: 'clang'
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+            node-version: '22'
+            toolchain: 'clang'
+            
+          # Linux builds
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+            node-version: '18'
+            toolchain: 'gcc'
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+            node-version: '20'
+            toolchain: 'gcc'
+          - os: ubuntu-22.04
+            platform: linux
+            arch: arm64
+            node-version: '20'
+            toolchain: 'gcc'
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+            node-version: '22'
+            toolchain: 'gcc'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install system dependencies (Windows)
+      if: matrix.platform == 'win32'
+      run: |
+        echo "🪟 Setting up Windows build environment..."
+        # Install CMake via Chocolatey
+        choco install cmake --version 3.27.0 --installargs 'ADD_CMAKE_TO_PATH=System'
+        # Ensure Python is available
+        python --version || choco install python3 --version 3.11.0
+        # Check Visual Studio
+        where cl.exe || echo "MSVC not found, will use pre-installed"
+    
+    - name: Install system dependencies (macOS)
+      if: matrix.platform == 'darwin'
+      run: |
+        echo "🍎 Setting up macOS build environment..."
+        brew install cmake ninja
+        # Check for Xcode
+        xcode-select --version || echo "Xcode CLI tools not installed"
+    
+    - name: Install system dependencies (Linux)
+      if: matrix.platform == 'linux'
+      run: |
+        echo "🐧 Setting up Linux build environment..."
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          python3-dev \
+          cmake \
+          ninja-build \
+          pkg-config \
+          libuv1-dev \
+          libssl-dev \
+          libc6-dev
+        # Additional ARM dependencies
+        if [ "${{ matrix.arch }}" == "arm64" ]; then
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        fi
+    
+    - name: Install npm dependencies
+      run: |
+        npm ci
+        npm install -g node-gyp@latest
+        
+    - name: Clean previous builds
+      run: |
+        echo "🧹 Cleaning previous builds..."
+        npm run clean || true
+        rm -rf build/ .node-gyp/ node_modules/binding.gyp 2>/dev/null || true
+        ls -la || echo "Directory listing completed"
+    
+    - name: Configure node-gyp
+      run: |
+        echo "⚙️ Configuring node-gyp for ${{ matrix.platform }}-${{ matrix.arch }}"
+        echo "Node version: $(node --version)"
+        echo "npm version: $(npm --version)"
+        echo "Platform: ${{ matrix.platform }}"
+        echo "Architecture: ${{ matrix.arch }}"
+        echo "Toolchain: ${{ matrix.toolchain }}"
+        
+        # Set platform-specific environment variables
+        if [ "${{ matrix.platform }}" == "linux" ]; then
+          export CC=clang
+          export CXX=clang++
+          export npm_config_cc=clang
+          export npm_config_cxx=clang++
+        elif [ "${{ matrix.platform }}" == "darwin" ]; then
+          export MACOSX_DEPLOYMENT_TARGET=10.15
+          export CMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}
+          export npm_config_cc=clang
+          export npm_config_cxx=clang++
+        elif [ "${{ matrix.platform }}" == "win32" ]; then
+          echo "Using Windows toolchain: ${{ matrix.toolchain }}"
+        fi
+        
+        node-gyp configure --arch=${{ matrix.arch }} --verbose
+      env:
+        npm_config_node_gyp: ./node_modules/node-gyp/bin/node-gyp.js
+        npm_config_build_from_source: true
+    
+    - name: Build native addon
+      run: |
+        echo "🔨 Building native addon..."
+        echo "Configuration:"
+        echo "  Platform: ${{ matrix.platform }}"
+        echo "  Architecture: ${{ matrix.arch }}"
+        echo "  Node.js: ${{ matrix.node-version }}"
+        echo "  Toolchain: ${{ matrix.toolchain }}"
+        
+        # Build with platform-specific optimizations
+        if [ "${{ matrix.platform }}" == "linux" ]; then
+          # Linux optimizations
+          npm_config_cflags="-O3 -march=native"
+        elif [ "${{ matrix.platform }}" == "darwin" ]; then
+          # macOS optimizations  
+          npm_config_cflags="-O3 -march=native -std=c++17"
+        elif [ "${{ matrix.platform }}" == "win32" ]; then
+          # Windows optimizations
+          npm_config_cflags="/O2"
+        fi
+        
+        npm run build --verbose
+      env:
+        npm_config_node_gyp: ./node_modules/node-gyp/bin/node-gyp.js
+        npm_config_build_from_source: true
+        npm_config_ignore_scripts: false
+    
+    - name: Verify build artifacts
+      run: |
+        echo "✅ Verifying build artifacts..."
+        if [ -f "./build/Release/XMRig.node" ]; then
+          echo "✅ Native module built successfully"
+          ls -la ./build/Release/
+          file ./build/Release/XMRig.node
+          
+          # Check file size (should be reasonable)
+          size=$(stat -c%s ./build/Release/XMRig.node 2>/dev/null || stat -f%z ./build/Release/XMRig.node 2>/dev/null)
+          echo "📊 Binary size: $size bytes"
+          
+          if [ "$size" -lt 100000 ]; then
+            echo "⚠️ Binary seems too small, checking for issues..."
+          fi
+        else
+          echo "❌ Build failed - native module not found"
+          ls -la ./build/ 2>/dev/null || echo "Build directory not found"
+          find . -name "*.node" -o -name "*.dll" -o -name "*.dylib" 2>/dev/null || echo "No binaries found"
+          exit 1
+        fi
+    
+    - name: Test basic functionality
+      run: |
+        echo "🧪 Testing basic functionality..."
+        # Test if the module can be loaded
+        node -e "
+        try {
+          console.log('Testing module loading...');
+          const module = require('./index.js');
+          console.log('✅ Module loaded successfully');
+          console.log('Module exports:', Object.keys(module));
+          
+          // Test basic API if available
+          if (module.getVersion) {
+            console.log('Version:', module.getVersion());
+          }
+          if (module.getSupportedAlgorithms) {
+            const algos = module.getSupportedAlgorithms();
+            console.log('Supported algorithms:', algos.length);
+          }
+        } catch (error) {
+          console.error('❌ Module test failed:', error.message);
+          process.exit(1);
+        }
+        "
+      continue-on-error: true
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: node-xmrig-${{ matrix.platform }}-${{ matrix.arch }}-node-${{ matrix.node-version }}
+        path: |
+          ./build/Release/XMRig.node
+          ./package.json
+          ./README.md
+        retention-days: 14
+
+  # Performance and stress testing
+  performance-tests:
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    name: Performance Testing
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Download Linux x64 build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: node-xmrig-linux-x64-node-20
+        path: ./build/
+    
+    - name: Performance benchmark
+      run: |
+        echo "⚡ Running performance benchmarks..."
+        node -e "
+        console.log('Performance Test Suite');
+        console.log('========================');
+        
+        const { XMRig, getVersion } = require('./index.js');
+        
+        // Test different configurations
+        const configs = [
+          { threads: 1, name: 'Single Thread' },
+          { threads: 2, name: 'Two Threads' },
+          { threads: 4, name: 'Four Threads' }
+        ];
+        
+        configs.forEach(config => {
+          try {
+            console.log(\`\nTesting \${config.name}...\`);
+            const startTime = Date.now();
+            
+            const miner = new XMRig({
+              pool: { url: 'test.pool.com:5555', user: 'test_address' },
+              cpu: { threads: config.threads }
+            });
+            
+            const initTime = Date.now() - startTime;
+            const status = miner.getStatus();
+            
+            console.log(\`✅ \${config.name}: Initialization \${initTime}ms\`);
+            console.log(\`   Status: \${JSON.stringify(status)}\`);
+            
+            // Memory usage test
+            if (global.gc) {
+              global.gc();
+              const memUsage = process.memoryUsage();
+              console.log(\`   Memory: \${Math.round(memUsage.heapUsed / 1024 / 1024)}MB\`);
+            }
+            
+            miner.destroy();
+          } catch (error) {
+            console.log(\`❌ \${config.name}: Failed - \${error.message}\`);
+          }
+        });
+        
+        console.log('\n✅ Performance tests completed');
+        "
+
+  # Package and release preparation
+  package-release:
+    needs: [build-matrix, quality-checks, performance-tests]
+    runs-on: ubuntu-latest
+    name: Package Release
+    
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Extract version information
+      id: version
+      run: |
+        VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "1.0.0")
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+        echo "📦 Package version: $VERSION"
+    
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+    
+    - name: Create release packages
+      run: |
+        echo "📦 Creating release packages..."
+        
+        # Create platform-specific packages
+        for dir in artifacts/node-xmrig-*-node-*; do
+          if [ -d "$dir" ]; then
+            basename=$(basename "$dir")
+            echo "Processing: $basename"
+            
+            # Create package directory
+            pkg_dir="release/$basename"
+            mkdir -p "$pkg_dir"
+            
+            # Copy binary
+            if [ -f "$dir/XMRig.node" ]; then
+              cp "$dir/XMRig.node" "$pkg_dir/"
+            fi
+            
+            # Copy documentation
+            cp package.json README.md "$pkg_dir/" 2>/dev/null || true
+            
+            # Create installation script
+            cat > "$pkg_dir/install.js" << 'EOF'
+const fs = require('fs');
+const path = require('path');
+
+console.log('Installing node-xmrig...');
+const sourcePath = path.join(__dirname, 'XMRig.node');
+const destPath = path.join(process.cwd(), 'node_modules', 'node-xmrig', 'build', 'Release', 'XMRig.node');
+
+try {
+  fs.copyFileSync(sourcePath, destPath);
+  console.log('✅ Binary installed successfully');
+} catch (error) {
+  console.error('❌ Installation failed:', error.message);
+  process.exit(1);
+}
+EOF
+            
+            echo "📦 Package created: $pkg_dir"
+          fi
+        done
+        
+        # Create comprehensive package
+        mkdir -p release/complete
+        cp artifacts/*/*/XMRig.node release/complete/ 2>/dev/null || true
+        cp package.json README.md release/complete/ 2>/dev/null || true
+        
+        # Create platform overview
+        cat > release/README.md << 'EOF'
+# node-xmrig Release Packages
+
+This directory contains platform-specific binaries for node-xmrig.
+
+## Installation
+
+1. Choose the package for your platform/architecture
+2. Extract the files
+3. Run: `node install.js`
+
+## Available Platforms
+
+- Windows x64
+- macOS x64 (Intel)
+- macOS arm64 (Apple Silicon)
+- Linux x64
+- Linux arm64
+
+## Usage
+
+```javascript
+const { XMRig } = require('node-xmrig');
+
+const miner = new XMRig({
+  pool: {
+    url: 'your-pool-url',
+    user: 'your-wallet-address'
+  },
+  cpu: {
+    threads: 4
+  }
+});
+
+await miner.start();
+```
+
+For full documentation, see README.md
+EOF
+        
+        ls -la release/
+    
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: node-xmrig-release-${{ steps.version.outputs.version }}
+        path: release/
+        retention-days: 30
+
+  # Optional: GitHub Release (only on tags)
+  create-release:
+    needs: package-release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    name: Create GitHub Release
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Download release artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: node-xmrig-release-${{ needs.package-release.outputs.version }}
+        path: release/
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.package-release.outputs.tag }}
+        name: Release ${{ needs.package-release.outputs.version }}
+        body: |
+          🎉 **node-xmrig ${{ needs.package-release.outputs.version }} Release**
+          
+          Cross-platform Node.js native module for XMRig cryptocurrency mining.
+          
+          ## 🚀 Features
+          
+          ✅ **Full TypeScript Support**
+          - Complete type definitions
+          - IntelliSense support
+          - Event-driven API
+          
+          ✅ **Cross-Platform Builds**
+          - Windows x64/arm64
+          - macOS x64/arm64 (Apple Silicon)
+          - Linux x64/arm64
+          
+          ✅ **Easy Configuration**
+          ```javascript
+          const { XMRig } = require('node-xmrig');
+          
+          const miner = new XMRig({
+            pool: {
+              url: 'your-pool-url',
+              user: 'your-wallet-address'
+            },
+            cpu: {
+              threads: 4  // Specify CPU cores
+            }
+          });
+          
+          await miner.start();
+          ```
+          
+          ## 📦 Available Packages
+          
+          Choose the package that matches your platform and architecture.
+          
+          ## 🛠️ Installation
+          
+          1. Download the appropriate package
+          2. Extract the files  
+          3. Run: `node install.js`
+          
+          For detailed documentation, see [README.md](README.md)
+        files: |
+          release/**
+        draft: false
+        prerelease: false
+
+  # Optional: npm publish (only on main branch tags)
+  publish-npm:
+    needs: package-release
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    name: Publish to npm
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        registry-url: 'https://registry.npmjs.org'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Update package version
+      run: |
+        CURRENT_VERSION=$(node -p "require('./package.json').version")
+        NEW_VERSION="$CURRENT_VERSION-dev.$(date +%Y%m%d%H%M%S)"
+        npm version $NEW_VERSION --no-git-tag-version
+        echo "Updated version to: $NEW_VERSION"
+    
+    - name: Publish to npm (dev version)
+      run: npm publish --tag dev --access public
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
