@@ -3,6 +3,9 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 // Configuration structure
 struct XMRigConfig {
@@ -207,7 +210,7 @@ Napi::Value StartMiner(const Napi::CallbackInfo& info) {
         
         std::cout << "Arguments built: " << args_vec.size() << " items" << std::endl;
         
-        // Simulate starting XMRig
+        // Actually start XMRig process
         std::cout << "Starting XMRig with arguments: ";
         for (const auto& arg : args_vec) {
             if (!arg.empty()) {
@@ -216,12 +219,47 @@ Napi::Value StartMiner(const Napi::CallbackInfo& info) {
         }
         std::cout << std::endl;
         
+        // Fork and execute XMRig
+        pid_t pid = fork();
+        
+        if (pid == 0) {
+            // Child process - execute xmrig
+            std::vector<const char*> argv_vec;
+            argv_vec.push_back("xmrig");
+            for (const auto& arg : args_vec) {
+                argv_vec.push_back(arg.c_str());
+            }
+            argv_vec.push_back(nullptr);
+            
+            // Close std streams to detach from terminal
+            freopen("/dev/null", "r", stdin);
+            freopen("/dev/null", "w", stdout);
+            freopen("/dev/null", "w", stderr);
+            
+            // Execute xmrig
+            execvp("xmrig", const_cast<char* const*>(argv_vec.data()));
+            
+            // If exec fails
+            perror("execvp failed");
+            exit(1);
+            
+        } else if (pid > 0) {
+            // Parent process - store PID
+            std::cout << "XMRig started with PID: " << pid << std::endl;
+        } else {
+            // Fork failed
+            std::cerr << "Failed to fork process" << std::endl;
+            Napi::Error::New(env, "Failed to start XMRig process").ThrowAsJavaScriptException();
+            return env.Null();
+        }
+        
         // Create response object
         Napi::Object response = Napi::Object::New(env);
         
-        // Set properties with explicit type checking
-        response.Set("started", Napi::Boolean::New(env, true));
-        response.Set("message", Napi::String::New(env, "XMRig start simulation successful"));
+        // Set properties with actual process info
+        response.Set("started", Napi::Boolean::New(env, pid > 0));
+        response.Set("message", Napi::String::New(env, pid > 0 ? "XMRig started successfully" : "Failed to start XMRig"));
+        response.Set("pid", Napi::Number::New(env, pid > 0 ? pid : 0));
         
         // Safe argsCount setting
         int32_t count = static_cast<int32_t>(args_vec.size());
