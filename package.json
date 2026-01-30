@@ -1,19 +1,41 @@
 {
   "name": "node-xmrig",
   "version": "1.0.0",
-  "description": "",
+  "description": "Node.js wrapper for XMRig - High performance Monero (XMR) CPU miner with full TypeScript support",
   "main": "index.js",
+  "types": "index.d.ts",
+  "keywords": [
+    "monero",
+    "xmr",
+    "mining",
+    "miner",
+    "cryptocurrency",
+    "cpu",
+    "nodejs",
+    "typescript",
+    "randomx",
+    "xmrig"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node examples/test.js",
     "install": "node-gyp rebuild",
-    "build": "rd /s /q .\\build & node-gyp configure && node-gyp build"
+    "build": "node-gyp configure && node-gyp build",
+    "clean": "node-gyp clean",
+    "rebuild": "npm run clean && npm run build",
+    "dev": "npm run build && node examples/basic.js",
+    "example:basic": "node examples/basic.js",
+    "example:config": "node examples/config.js",
+    "example:events": "node examples/events.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/teddy1565/node-xmrig.git"
   },
-  "author": "",
-  "license": "ISC",
+  "author": {
+    "name": "Teddy",
+    "email": "teddy1565@github.com"
+  },
+  "license": "MIT",
   "gypfile": true,
   "bugs": {
     "url": "https://github.com/teddy1565/node-xmrig/issues"
@@ -22,5 +44,32 @@
   "dependencies": {
     "nan": "^2.22.2",
     "node-addon-api": "^8.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "linux",
+    "win32",
+    "darwin"
+  ],
+  "cpu": [
+    "x64",
+    "x86"
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib/",
+    "examples/",
+    "README.md"
+  ],
+  "directories": {
+    "example": "examples",
+    "lib": "lib"
   }
 }
