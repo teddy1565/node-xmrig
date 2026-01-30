@@ -149,53 +149,147 @@ jobs:
 
   # 額外的編譯測試（專門測試編譯問題）
   native-build-test:
-    name: Native Build Test
-    runs-on: ubuntu-latest
+    name: Native Build Test - ${{ matrix.node-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node-version: '20.x'
+          - os: ubuntu-latest
+            node-version: '22.x'
+          - os: macos-latest
+            node-version: '20.x'
+
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Node.js
+    - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
 
-    - name: Install system dependencies for build
+    - name: Display build environment
       run: |
+        echo "=== Build Environment ==="
+        echo "OS: ${{ matrix.os }}"
+        echo "Node.js: $(node --version)"
+        echo "npm: $(npm --version)"
+        echo "Python: $(python3 --version 2>/dev/null || echo 'not available')"
+        echo "GCC: $(gcc --version 2>/dev/null | head -1 || echo 'not available')"
+        echo "Make: $(make --version 2>/dev/null | head -1 || echo 'not available')"
+
+    - name: Install system dependencies (Ubuntu only)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        echo "=== Installing Ubuntu build dependencies ==="
         sudo apt-get update
-        sudo apt-get install -y build-essential python3-dev
+        sudo apt-get install -y build-essential python3-dev python3-pip
 
-    - name: Install Node dependencies
-      run: npm ci --prefer-offline
-
-    - name: Full rebuild test
+    - name: Install Node dependencies (with fallback)
       run: |
-        echo "=== Full Rebuild Test ==="
-        npm run clean
-        npm run rebuild
-
-    - name: Verify native module
-      run: |
-        echo "=== Verify Native Module ==="
-        ls -la build/Release/ 2>/dev/null || echo "Build directory not found"
-        find build/ -name "*.node" -type f -exec file {} \; 2>/dev/null || echo "No .node files found"
+        echo "=== Installing Node dependencies ==="
+        set +e  # Don't exit on npm ci failure
         
-        if [ -f "build/Release/XMRig.node" ]; then
-          echo "✅ Native module compiled successfully"
-          # Test loading the native module
-          node -e "
-          try {
-            const addon = require('./build/Release/XMRig.node');
-            console.log('✅ Native module loads successfully');
-            console.log('Module exports:', Object.keys(addon));
-          } catch (error) {
-            console.error('❌ Native module load failed:', error.message);
-            process.exit(1);
-          }
-          "
-        else
-          echo "❌ Native module compilation failed"
+        # Try npm ci first
+        npm ci
+        
+        # If npm ci fails, fallback to npm install
+        if [ $? -ne 0 ]; then
+          echo "⚠️ npm ci failed, trying npm install..."
+          rm -f package-lock.json
+          npm install
+        fi
+        
+        if [ $? -ne 0 ]; then
+          echo "❌ Failed to install dependencies"
           exit 1
         fi
+        
+        echo "✅ Dependencies installed successfully"
+
+    - name: Clean previous builds
+      run: |
+        echo "=== Cleaning previous builds ==="
+        npm run clean 2>/dev/null || true
+        rm -rf build/ 2>/dev/null || true
+        rm -rf node_modules/.cache/ 2>/dev/null || true
+        echo "Clean completed"
+
+    - name: Build native module (with detailed logging)
+      id: build
+      run: |
+        echo "=== Building native module ==="
+        echo "Current directory: $(pwd)"
+        echo "Files in current directory:"
+        ls -la
+        
+        echo "Node modules:"
+        ls -la node_modules/ 2>/dev/null || echo "No node_modules"
+        
+        echo "Starting build process..."
+        npm run build 2>&1 | tee build.log
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ Build completed successfully"
+        else
+          echo "❌ Build failed"
+          echo "Build log contents:"
+          cat build.log 2>/dev/null || echo "No build log available"
+          exit 1
+        fi
+
+    - name: Verify build artifacts
+      run: |
+        echo "=== Verifying build artifacts ==="
+        if [ -d "build" ]; then
+          echo "✅ Build directory exists"
+          echo "Build directory contents:"
+          find build/ -type f
+        else
+          echo "❌ Build directory not found"
+          exit 1
+        fi
+        
+        echo "Checking for .node files:"
+        find build/ -name "*.node" -type f
+        
+        if [ -f "build/Release/XMRig.node" ]; then
+          echo "✅ XMRig.node found"
+          file build/Release/XMRig.node
+        else
+          echo "❌ XMRig.node not found"
+          echo "Available files in build:"
+          find build/ -type f
+          exit 1
+        fi
+
+    - name: Test native module loading
+      run: |
+        echo "=== Testing native module ==="
+        node -e "
+        try {
+          console.log('Testing native module loading...');
+          const addon = require('./build/Release/XMRig.node');
+          console.log('✅ Native module loaded successfully');
+          console.log('Available exports:', Object.keys(addon));
+          
+          // Test some basic functionality
+          if (typeof addon.getVersion === 'function') {
+            console.log('✅ Native module has getVersion method');
+            console.log('Version:', addon.getVersion());
+          } else {
+            console.log('⚠️ getVersion method not found');
+          }
+          
+        } catch (error) {
+          console.error('❌ Native module load failed:', error.message);
+          console.error(error.stack);
+          process.exit(1);
+        }
+        "
 
   # 安全性檢查
   security-check:
